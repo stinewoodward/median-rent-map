@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset=utf-8 />
+    <title>Lab 10 Starter</title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.2.0/dist/leaflet.css" />
+    <link href='http://fonts.googleapis.com/css?family=Lato' rel='stylesheet' type='text/css'>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: whitesmoke;
+            font-family: Lato, sans-serif;
+            color: #0D0000;
+        }
+        header {
+            width: 80%;
+            margin: 10px auto 10px auto;
+        }
+        h1 {
+            display: inline-block;
+            margin-right: 20px;
+            color: #001323;
+        }
+        h2 {
+            display: inline-block;
+            color: #001323;
+        }
+        #map {
+            width: 80%;
+            height: 540px;
+            margin: 10px 10%;
+            background: whitesmoke;
+            border: 2px solid #dddedf;
+        }
+        footer {
+            padding: 6px 10%;
+            width: 80%;
+        }
+        p {
+            font-size: 1em;
+            color: #001323;
+        }
+        .legend {
+            padding: 6px 8px;
+            font-size: 1em;
+            background: rgba(255,255,255,0.8);
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            border-radius: 5px;
+        }
+        .legend h3 {
+            font-size: 1.1em;
+            font-weight: normal;
+            color: #001323;
+            margin: 0 0 10px 0;
+        }
+        .legend span {
+            width: 20px;
+            height: 20px;
+            float: left;
+            margin: 0 10px 4px 0;
+        }
+        .legend label {
+            font-size: 1.1em;
+        }
+        .legend label:after {
+            content: '';
+            display: block;
+            clear: both;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>Median rent for counties in the United States, 2015</h1>
+    </header>
+
+    <div id='map'></div>
+
+    <footer>
+        <p>Map authored by Christine Woodward</p>
+        <p>Data downloaded from American FactFinder with US county polygons downloaded from the US Census Cartographic Boundary Shapefiles.</p>
+        <p>Hover over each county for information on the median rent in that county.
+        </p>
+    </footer>
+
+
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js" integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4=" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/leaflet@1.2.0/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/simple-statistics@2.5.0/dist/simple-statistics.min.js"></script>
+
+    <script>
+
+        //sets initial zoom and map position
+        var options = {
+            center: [39,-98.5795],
+            zoom: 4.4,
+            zoomSnap: 0.1,
+            zoomControl: false
+        }
+
+        //create the map
+        var map = L.map('map', options);
+
+        map.addControl( L.control.zoom({ position: 'topright' }));
+
+        var medianRent = "RENT";
+
+        //jquery function that allows us to call the geojson rather than load it into the script
+        $.getJSON("data/counties_median_rent_2015.json", function(data) {
+
+            //create dataLayer variable for use later
+            var dataLayer = L.geoJson(data, {
+                style: function(feature) {
+                    return {
+                        color: '#dddddd',
+                        weight: 1,
+                        fillOpacity: 1,
+                        fillColor: '#1f78b4'
+                    };
+                }
+            }).addTo(map);
+
+            drawMap(dataLayer);
+
+        });
+
+        function drawMap(dataLayer) {
+
+            var breaks = getClassBreaks(dataLayer);
+
+            //iterate through each layer to set their style
+            dataLayer.eachLayer(function(layer) {
+                layer.setStyle({
+                    fillColor: getColor(layer.feature.properties[medianRent], breaks)
+                });
+
+                // create popup
+                var popup = "<h3><b>" + layer.feature.properties.NAME + " County</b></h3>" +
+                          "<p>Median Rent: " + layer.feature.properties[medianRent] + "</p>";
+
+                //bind pop up to layers
+                layer.bindPopup(popup);
+
+                //popup appears on mouseover and disappears on mouseout
+                layer.on('mouseover', function(){
+                    this.openPopup();
+                });
+                layer.on('mouseout', function(){
+                    this.closePopup();
+                });
+             });
+
+            drawLegend(breaks);
+
+        }
+
+        function getClassBreaks(dataLayer) {
+
+            //empty array to hold rent values
+            var rentValues = [];
+
+            //iterate through each layer in the geoJson, pull the rent value, push into its own array
+            dataLayer.eachLayer(function(layer) {
+                if (layer.feature.properties[medianRent] != null) {
+                    var value = layer.feature.properties[medianRent];
+                    rentValues.push(Number(value)); // use the Number() function to convert to number
+                }
+            });
+
+            // conosole.log the array to find strings!
+            console.log(rentValues)
+
+            //determine similar clusters
+            var clusters = ss.ckmeans(rentValues, 5);
+
+            //create an array of the lowest value within each cluster
+            var breaks = clusters.map(function(cluster){
+                return [cluster[0],cluster.pop()];
+            });
+
+            console.log(breaks);
+
+            //return Array of class breaks, breaks occuring at the lowest value within each cluster
+            return breaks;
+
+        }
+
+        function getColor(d, breaks) {
+
+            if(d <= breaks[0][1]) {
+                return '#f1eef6';
+            } else if(d <= breaks[1][1]) {
+                return '#bdc9e1';
+            } else if(d <= breaks[2][1]) {
+                return '#74a9cf';
+            } else if(d <= breaks[3][1]) {
+                return '#2b8cbe'; //this color and one aren't working and I don't know why.
+            } else if(d <= breaks[4][1]) {
+                return '#045a8d';
+            }
+
+        }
+
+        function drawLegend(breaks){
+
+            // create a new Leaflet control object, and position it top left
+            var legend = L.control({position: 'topleft'});
+
+            // when the legend is added to the map
+            legend.onAdd = function () {
+
+                // create a new HTML <div> element and give it a class name of "legend"
+                var div = L.DomUtil.create('div', 'legend');
+
+                // first append an <h3> tag to the div holding the current attribute
+                // and norm values (i.e., the mapped phenomena)
+                div.innerHTML = "<h3>Median Rent in US$</h3>";
+
+                // for each of our breaks
+                for (var i = 0; i < breaks.length; i++) {
+                    // determine the color associated with each break value,
+                    // including the lower range value
+                    var color = getColor(breaks[i][0], breaks);
+
+                    // concatenate a <span> tag styled with the color and the range values
+                    // of that class and include a label with the low and a high ends of that class range
+                    div.innerHTML +=
+                        '<span style="background:' + color + '"></span> ' +
+                        '<label>'+(breaks[i][0]).toLocaleString() + ' &mdash; ' +
+                        (breaks[i][1]).toLocaleString() + '</label>';
+                }
+
+                // return the populated div to be added to the map
+                return div;
+            };
+
+            // add the legend to the map
+            legend.addTo(map);
+        }
+
+    </script>
+
+</body>
+
+</html>
